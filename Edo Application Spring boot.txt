@@ -1,0 +1,619 @@
+package com.cpatos.edo.Implementation.cchaportdb;
+
+
+import com.cpatos.edo.model.cchaportdb.*;
+import com.cpatos.edo.payload.EdoApplicationOnblurList;
+import com.cpatos.edo.payload.ResponseMessage;
+import com.cpatos.edo.repository.cchaportdb.*;
+import com.cpatos.edo.service.cchaportdb.EdoApplicationService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+
+@Service
+public class EdoApplicationServiceImpl implements EdoApplicationService {
+
+    ResponseMessage responseMessage;
+    EdoApplicationOnblurList edoApplicationOnblurList;
+    @Autowired
+    EdoApplicationRepository edoAppRepo;
+
+    @Autowired
+    IgmDetailsRepository igmDetailsRepo;
+
+    @Autowired
+    IgmSupplimentaryDetailsRepository igmSuppDetailsRepo;
+
+    @Autowired
+    IgmSupDetailContainerRepository igmSupDtlContRepo;
+
+    @Autowired
+    OrganizationProfileRepository organizationProfileRepository;
+
+
+    @Autowired
+    UserRepository userRepo;
+
+    @Autowired
+    ClearedMblByMloRepository clearedMblByMloRepo;
+
+    @Autowired
+    IgmDtlContRepo igmDtlContRepo;
+
+
+
+    @Override
+    public ResponseEntity<ResponseMessage> edoApplication(String rot, String bl, String loginId, String ipAddress){
+        String cnfLoginId = "";
+        rot = rot.replace("_","/");
+
+        SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        Date date = new Date();
+        System.out.println(formatter.format(date));
+        System.out.println(java.time.LocalDateTime.now().minusHours(6));
+
+        Integer cntExisting = edoAppRepo.countByRotationAndBl(rot,bl);
+        if(cntExisting > 0){
+            List<EdoApplication> edoApplicationListByRotAndBl = edoAppRepo.findByRotationAndBl(rot,bl);
+            for (int i=0;i<edoApplicationListByRotAndBl.size();i++){
+                cnfLoginId = edoApplicationListByRotAndBl.get(i).getEdoAppliedBy();
+            }
+        }
+
+        Integer cntApplication = edoAppRepo.countByRotationAndBlAndRejectionSt(rot,bl,0);
+
+        if((cntApplication==0) && (!cnfLoginId.equals(loginId)))
+        {
+            String typeOfIgm = "";
+            String blTypeBB = "";
+
+            Integer cntResult = igmDetailsRepo.countByImportRotationNoAndBlNo(rot,bl);
+            if(cntResult == 0)
+            {
+                Integer cntSupResult = igmSuppDetailsRepo.countByImportRotationNoAndBlNo(rot,bl);
+                if(cntSupResult == 0)
+                {
+                    responseMessage = new ResponseMessage( "Wrong Combination of Rotation and BL");
+                    return new ResponseEntity<>(responseMessage, HttpStatus.BAD_REQUEST);
+                }
+                else
+                {
+                    List<IgmSupplimentaryDetail> igmSupplimentaryDetails = igmSuppDetailsRepo.findByImportRotationNoAndBlNo(rot,bl);
+                    for (int i=0; i<igmSupplimentaryDetails.size();i++){
+                        typeOfIgm = igmSupplimentaryDetails.get(i).getTypeOfIgm();
+                    }
+                    blTypeBB = "HB";
+                }
+            }
+            else
+            {
+                List<IgmDetails> igmDetails = igmDetailsRepo.findByImportRotationNoAndBlNo(rot,bl);
+                for (int i=0; i<igmDetails.size();i++){
+                    typeOfIgm = igmDetails.get(i).getTypeOfIgm();
+                }
+                blTypeBB = "MB";
+            }
+
+            if(typeOfIgm != "")
+            {
+                if(typeOfIgm.equals("BB"))
+                {
+                    String submiteeOrgId = "";
+                    List<IgmSupplimentaryDetail> igmSuppDtls = igmSuppDetailsRepo.findByImportRotationNoAndBlNo(rot,bl);
+                    List<IgmDetails> igmDtls = igmDetailsRepo.findByImportRotationNoAndBlNo(rot,bl);
+
+                    if(igmSuppDtls.size() == 0)
+                    {
+                        for (int i=0; i<igmDtls.size();i++){
+                            submiteeOrgId = igmDtls.get(i).getSubmiteeOrgId();
+                        }
+                    }
+                    else
+                    {
+                        for (int i=0; i<igmSuppDtls.size();i++){
+                            submiteeOrgId = igmSuppDtls.get(i).getSubmiteeOrgId();
+                        }
+                    }
+
+
+
+                    EdoApplication edoApplication = new EdoApplication();
+                    edoApplication.setRotation(rot);
+                    edoApplication.setBl(bl);
+                    edoApplication.setBlType(blTypeBB);
+                    edoApplication.setIgmType(typeOfIgm);
+                    edoApplication.setShAgentOrgId(submiteeOrgId);
+                    edoApplication.setEntryTime(java.time.LocalDateTime.now().minusHours(6));
+                    edoApplication.setSubmittedBy(loginId);
+                    edoApplication.setIpAddress(ipAddress);
+                    edoApplication.setEdoAppliedBy(loginId);
+
+                    edoAppRepo.save(edoApplication);
+                    responseMessage = new ResponseMessage( "Application Successful");
+                    return new ResponseEntity<>(responseMessage, HttpStatus.OK);
+                }
+                else
+                {
+                    System.out.println("........... GM ...............");
+                    String blType = "";
+                    List<IgmSupplimentaryDetail> igmData = igmSuppDetailsRepo.findByImportRotationNoAndBlNo(rot,bl);
+                    if(igmData.size() > 0)
+                    {
+                        blType = "HB";
+
+                        String supOrg = "";
+                        String masterOrg = "";
+                        String masterBl = "";
+                        String contStatus = "";
+                        Integer ffStat = 0;
+                        Date ffClearanceTime = null;
+                        Integer entryOrgId = 0;
+                        String enteredBy = "";
+                        Date entryTime = null;
+                        String entryIpAddress = "";
+                        String clearedBy = "";
+                        Date clearanceTime = null;
+                        String clearanceIp = "";
+                        Integer clearedByOrgId = 0;
+                        Integer clearanceSt = 0;
+                        Date mblValidUptoDt = null;
+                        Integer fclStatus = 0;
+
+                        for (int i=0; i<igmData.size();i++){
+                            supOrg = igmData.get(i).getSubmiteeOrgId();
+                            masterOrg = igmData.get(i).getIgmDetails().getSubmiteeOrgId();
+                        }
+
+                        List<IgmSupDetailContainer> contDtls = igmSupDtlContRepo.findByIgmSupplimentaryDetailImportRotationNoAndIgmSupplimentaryDetailBlNo(rot,bl);
+                        for (int i=0;i<contDtls.size();i++ )
+                        {
+                            contStatus = contDtls.get(i).getContStatus();
+                            masterBl = contDtls.get(i).getIgmSupplimentaryDetail().getMasterBLNo();
+
+                            if(contStatus.equals("FCL") || contStatus.equals("FCL/PART") || contStatus.equals("ETY"))
+                            {
+                                fclStatus = fclStatus+1;
+                            }
+                        }
+
+                        if(fclStatus > 0)
+                        {
+                            contStatus = "FCL";
+                        }
+                        else
+                        {
+                            contStatus = contStatus;
+                        }
+
+                        Integer providedOrgTypeId = 0;
+                        List<User> users = userRepo.findByLoginId(loginId);
+                        for (int i=0; i<users.size();i++)
+                        {
+                            providedOrgTypeId = users.get(i).getOrgTypeId();
+                        }
+
+                        if(contStatus.equals("") || masterBl.equals("") ){
+                            responseMessage = new ResponseMessage( "Sorry! Could not apply EDO");
+                            return new ResponseEntity<>(responseMessage, HttpStatus.BAD_REQUEST);
+                        } else if(providedOrgTypeId != 2){
+                            responseMessage = new ResponseMessage( "Sorry! Invalid C&F.");
+                            return new ResponseEntity<>(responseMessage, HttpStatus.BAD_REQUEST);
+                        } else {
+                            if(contStatus.equals("LCL"))
+                            {
+                                Integer mblClearanceStatus = clearedMblByMloRepo.countByMasterBl(masterBl);
+                                if(mblClearanceStatus == 0)
+                                {
+                                    ffStat = 0;
+                                    EdoApplication edoApplication = new EdoApplication();
+                                    edoApplication.setRotation(rot);
+                                    edoApplication.setBl(bl);
+                                    edoApplication.setBlType(blType);
+                                    edoApplication.setIgmType(typeOfIgm);
+                                    edoApplication.setMlo(masterOrg);
+                                    edoApplication.setFfOrgId(supOrg);
+                                    edoApplication.setFfStat(ffStat);
+                                    edoApplication.setFfClearanceTime(ffClearanceTime);
+                                    edoApplication.setContStatus(contStatus);
+                                    edoApplication.setMblOfHbl(masterBl);
+                                    edoApplication.setEntryTime(java.time.LocalDateTime.now().minusHours(6));
+                                    edoApplication.setSubmittedBy(loginId);
+                                    edoApplication.setIpAddress(ipAddress);
+                                    edoApplication.setEdoAppliedBy(loginId);
+                                    edoAppRepo.save(edoApplication);
+                                    responseMessage = new ResponseMessage( "Application Successful");
+                                    return new ResponseEntity<>(responseMessage, HttpStatus.OK);
+                                }
+                                else
+                                {
+                                    List<ClearedMblByMlo> clearedData = clearedMblByMloRepo.findByMasterBl(masterBl);
+                                    for (int i=0;i<clearedData.size();i++)
+                                    {
+                                        ffClearanceTime = clearedData.get(i).getEntryTime();
+                                        clearanceSt = clearedData.get(i).getClearanceSt();
+                                        entryOrgId = clearedData.get(i).getEntryOrgId();
+                                        enteredBy = clearedData.get(i).getEnteredBy();
+                                        entryTime = clearedData.get(i).getEntryTime();
+                                        entryIpAddress = clearedData.get(i).getEntryIpAddress();
+                                        clearedBy = clearedData.get(i).getClearedBy();
+                                        clearanceTime = clearedData.get(i).getClearanceTime();
+                                        clearanceIp = clearedData.get(i).getClearanceIp();
+                                        clearedByOrgId = clearedData.get(i).getClearedByOrgId();
+                                        mblValidUptoDt = clearedData.get(i).getValidUptoDt();
+                                    }
+                                    ffStat = 1;
+                                    EdoApplication edoApplication = new EdoApplication();
+                                    edoApplication.setRotation(rot);
+                                    edoApplication.setBl(bl);
+                                    edoApplication.setBlType(blType);
+                                    edoApplication.setIgmType(typeOfIgm);
+                                    edoApplication.setMlo(masterOrg);
+                                    edoApplication.setFfOrgId(supOrg);
+                                    edoApplication.setFfStat(ffStat);
+                                    edoApplication.setFfClearanceTime(ffClearanceTime);
+                                    edoApplication.setForwardedBy(clearedBy);
+                                    edoApplication.setForwardedOrgId(clearedByOrgId);
+                                    edoApplication.setContStatus(contStatus);
+                                    edoApplication.setMblOfHbl(masterBl);
+                                    edoApplication.setEntryTime(java.time.LocalDateTime.now().minusHours(6));
+                                    edoApplication.setSubmittedBy(loginId);
+                                    edoApplication.setIpAddress(ipAddress);
+                                    edoApplication.setEdoAppliedBy(loginId);
+                                    edoAppRepo.save(edoApplication);
+                                    responseMessage = new ResponseMessage( "Application Successful");
+                                    return new ResponseEntity<>(responseMessage, HttpStatus.OK);
+                                }
+                            }
+                            else if(contStatus.equals("FCL") || contStatus.equals("FCL/PART") || contStatus.equals("ETY"))
+                            {
+                                Integer mblClearanceStatus = clearedMblByMloRepo.countByMasterBl(masterBl);
+                                if(mblClearanceStatus == 0)
+                                {
+                                    ffStat = 0;
+                                    EdoApplication edoApplication = new EdoApplication();
+                                    edoApplication.setRotation(rot);
+                                    edoApplication.setBl(bl);
+                                    edoApplication.setBlType(blType);
+                                    edoApplication.setIgmType(typeOfIgm);
+                                    edoApplication.setMlo(masterOrg);
+                                    edoApplication.setFfOrgId(supOrg);
+                                    edoApplication.setFfStat(ffStat);
+                                    edoApplication.setFfClearanceTime(ffClearanceTime);
+                                    edoApplication.setContStatus(contStatus);
+                                    edoApplication.setMblOfHbl(masterBl);
+                                    edoApplication.setEntryTime(java.time.LocalDateTime.now().minusHours(6));
+                                    edoApplication.setSubmittedBy(loginId);
+                                    edoApplication.setIpAddress(ipAddress);
+                                    edoApplication.setEdoAppliedBy(loginId);
+                                    edoAppRepo.save(edoApplication);
+                                    responseMessage = new ResponseMessage( "Application Successful");
+                                    return new ResponseEntity<>(responseMessage, HttpStatus.OK);
+                                }
+                                else
+                                {
+                                    List<ClearedMblByMlo> clearedData = clearedMblByMloRepo.findByMasterBl(masterBl);
+                                    for (int i=0;i<clearedData.size();i++)
+                                    {
+                                        ffClearanceTime = clearedData.get(i).getEntryTime();
+                                        clearanceSt = clearedData.get(i).getClearanceSt();
+                                        entryOrgId = clearedData.get(i).getEntryOrgId();
+                                        enteredBy = clearedData.get(i).getEnteredBy();
+                                        entryTime = clearedData.get(i).getEntryTime();
+                                        entryIpAddress = clearedData.get(i).getEntryIpAddress();
+                                        clearedBy = clearedData.get(i).getClearedBy();
+                                        clearanceTime = clearedData.get(i).getClearanceTime();
+                                        clearanceIp = clearedData.get(i).getClearanceIp();
+                                        clearedByOrgId = clearedData.get(i).getClearedByOrgId();
+                                        mblValidUptoDt = clearedData.get(i).getValidUptoDt();
+                                    }
+                                    ffStat = 1;
+                                    EdoApplication edoApplication = new EdoApplication();
+                                    edoApplication.setRotation(rot);
+                                    edoApplication.setBl(bl);
+                                    edoApplication.setBlType(blType);
+                                    edoApplication.setIgmType(typeOfIgm);
+                                    edoApplication.setMlo(masterOrg);
+                                    edoApplication.setFfOrgId(supOrg);
+                                    edoApplication.setFfStat(ffStat);
+                                    edoApplication.setFfClearanceTime(ffClearanceTime);
+                                    edoApplication.setForwardedBy(clearedBy);
+                                    edoApplication.setForwardedOrgId(clearedByOrgId);
+                                    edoApplication.setValidUptoDtByMlo(mblValidUptoDt);
+                                    edoApplication.setContStatus(contStatus);
+                                    edoApplication.setMblOfHbl(masterBl);
+                                    edoApplication.setEntryTime(java.time.LocalDateTime.now().minusHours(6));
+                                    edoApplication.setSubmittedBy(loginId);
+                                    edoApplication.setIpAddress(ipAddress);
+                                    edoApplication.setEdoAppliedBy(loginId);
+                                    edoAppRepo.save(edoApplication);
+                                    responseMessage = new ResponseMessage( "Application Successful");
+                                    return new ResponseEntity<>(responseMessage, HttpStatus.OK);
+                                }
+
+                            }
+                            else
+                            {
+                                responseMessage = new ResponseMessage( "Sorry! Could not apply EDO");
+                                return new ResponseEntity<>(responseMessage, HttpStatus.BAD_REQUEST);
+                            }
+                        }
+
+                    }
+                    else
+                    {
+                        blType = "MB";
+                        List<IgmDetailContainer> contDtls = igmDtlContRepo.findByIgmDetailsImportRotationNoAndIgmDetailsBlNo(rot,bl);
+                        String containerStatus = "";
+                        Integer fclStatus = 0;
+                        String masterOrg = "";
+
+                        for(int i=0;i<contDtls.size();i++)
+                        {
+                            containerStatus = contDtls.get(i).getContStatus();
+
+                            if(containerStatus.equals("FCL") || containerStatus.equals("FCL/PART") || containerStatus.equals("ETY"))
+                            {
+                                fclStatus = fclStatus+1;
+                            }
+                        }
+                        if(fclStatus > 0)
+                        {
+                            containerStatus = "FCL";
+                        }
+                        else
+                        {
+                            containerStatus = containerStatus;
+                        }
+
+                        List<IgmDetails> igmDtls = igmDetailsRepo.findByImportRotationNoAndBlNo(rot,bl);
+                        for (int i=0; i<igmDtls.size();i++){
+                            masterOrg = igmDtls.get(i).getSubmiteeOrgId();
+                        }
+
+                        if(masterOrg.equals("")){
+                            responseMessage = new ResponseMessage( "Sorry! Could not apply EDO");
+                            return new ResponseEntity<>(responseMessage, HttpStatus.BAD_REQUEST);
+                        } else {
+                            EdoApplication edoApplication = new EdoApplication();
+                            edoApplication.setRotation(rot);
+                            edoApplication.setBl(bl);
+                            edoApplication.setBlType(blType);
+                            edoApplication.setIgmType(typeOfIgm);
+                            edoApplication.setMlo(masterOrg);
+                            edoApplication.setContStatus(containerStatus);
+                            edoApplication.setEntryTime(java.time.LocalDateTime.now().minusHours(6));
+                            edoApplication.setSubmittedBy(loginId);
+                            edoApplication.setIpAddress(ipAddress);
+                            edoApplication.setEdoAppliedBy(loginId);
+                            edoAppRepo.save(edoApplication);
+                            responseMessage = new ResponseMessage( "Application Successful");
+                            return new ResponseEntity<>(responseMessage, HttpStatus.OK);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                responseMessage = new ResponseMessage( "Sorry! Could not apply EDO");
+                return new ResponseEntity<>(responseMessage, HttpStatus.BAD_REQUEST);
+            }
+        }
+        else
+        {
+            responseMessage = new ResponseMessage( "Sorry ! Already applied for Rotation : " + rot + " and BL : " + bl);
+            return new ResponseEntity<>(responseMessage, HttpStatus.BAD_REQUEST);
+        }
+
+    }
+
+
+    @Override
+    public List<EdoApplicationOnblurList> edoApplicationImplementation(String rot, String bl) {
+        String cnfLoginId = "";
+        rot = rot.replace("_","/");
+       List<EdoApplicationOnblurList>  edoApplicationOnblurLists=new ArrayList<>();
+
+        EdoApplicationOnblurList edoApplication=new EdoApplicationOnblurList();
+        SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        Date date = new Date();
+        System.out.println(formatter.format(date));
+        System.out.println(java.time.LocalDateTime.now().minusHours(6));
+        System.out.println("Rotation:"+rot);
+        System.out.println("bl:"+bl);
+
+        String type_of_igm = "";
+        String blType_BB = "";
+        Integer msgFlag = 1;
+
+        String typeOfIgm = "";
+        String blTypeBB = "";
+        String shippingAgentName="";
+
+        Integer cntResult = igmDetailsRepo.countByImportRotationNoAndBlNo(rot,bl);
+        System.out.println("igmDetatil:"+cntResult);
+        if(cntResult == 0){
+            Integer cntSupResult = igmSuppDetailsRepo.countByImportRotationNoAndBlNo(rot,bl);
+            System.out.println("igmSubDetatil:"+cntSupResult);
+
+            if(cntSupResult==0){
+                msgFlag=0;
+            }
+            else
+            {
+                List<IgmSupplimentaryDetail> igmSupplimentaryDetails = igmSuppDetailsRepo.findByImportRotationNoAndBlNo(rot,bl);
+                for (int i=0; i<igmSupplimentaryDetails.size();i++){
+                    typeOfIgm = igmSupplimentaryDetails.get(i).getTypeOfIgm();
+                }
+                blTypeBB = "HB";
+            }
+
+        }
+
+        else
+        {
+            List<IgmDetails> igmDetails = igmDetailsRepo.findByImportRotationNoAndBlNo(rot,bl);
+            System.out.println("igmDetatil.........:"+igmDetails);
+
+            for (int i=0; i<igmDetails.size();i++){
+                typeOfIgm = igmDetails.get(i).getTypeOfIgm();
+                System.out.println("typeOfIgm.........:"+typeOfIgm);
+
+            }
+            blTypeBB = "MB";
+        }
+
+        edoApplication.setBlType_BB(blTypeBB);
+        if(typeOfIgm != "")
+        {
+            if(typeOfIgm.equals("BB")) {
+                String submiteeOrgId = "";
+                List<IgmSupplimentaryDetail> igmSuppDtls = igmSuppDetailsRepo.findByImportRotationNoAndBlNo(rot, bl);
+                List<IgmDetails> igmDtls = igmDetailsRepo.findByImportRotationNoAndBlNo(rot, bl);
+
+                if (igmSuppDtls.size() == 0) {
+                    for (int i = 0; i < igmDtls.size(); i++) {
+                        submiteeOrgId = igmDtls.get(i).getSubmiteeOrgId();
+                        System.out.println("submiteeOrgId.........:"+submiteeOrgId);
+
+                    }
+                } else {
+                    for (int i = 0; i < igmSuppDtls.size(); i++) {
+                        submiteeOrgId = igmSuppDtls.get(i).getSubmiteeOrgId();
+                        System.out.println("submiteeOrgId  2.........:"+submiteeOrgId);
+
+                    }
+                }
+
+                if(submiteeOrgId!="")
+                {
+
+                    List<OrganizationProfile> saDtls = organizationProfileRepository.findById(submiteeOrgId);
+                    System.out.println("saDtls.........:"+saDtls);
+
+
+
+                    for(int i = 0; i < saDtls.size(); i++)
+                    {
+                        shippingAgentName = saDtls.get(i).getOrganizationName();
+
+                    }
+                    edoApplication.setShippingAgent(shippingAgentName);
+
+                }
+
+            }
+            else {
+                System.out.println("........... GM ...............");
+                String blType = "";
+                List<IgmSupplimentaryDetail> rsltStr = igmSuppDetailsRepo.findByImportRotationNoAndBlNo(rot,bl);
+                if(rsltStr.size() > 0) {
+                    blType = "HB";
+
+                    String supOrg = "";
+                    String masterOrg = "";
+                    String mloId = "";
+                    String masterBl = "";
+                    String contStatus = "";
+                    String ffName="";
+                    String mloName="";
+
+
+                    for (int i = 0; i < rsltStr.size(); i++) {
+                        supOrg = rsltStr.get(i).getSubmiteeOrgId();
+                        masterOrg = rsltStr.get(i).getIgmDetails().getSubmiteeOrgId();
+                        mloId = rsltStr.get(i).getSubmiteeId();
+
+                    }
+                    if(supOrg!="")
+                    {
+                        List<OrganizationProfile> saDtls = organizationProfileRepository.findById(supOrg);
+                        System.out.println("saDtls.........:"+saDtls);
+
+
+                        for(int i = 0; i < saDtls.size(); i++)
+                        {
+                            ffName = saDtls.get(i).getOrganizationName();
+
+                        }
+                        edoApplication.setFfName(ffName);
+
+                    }
+
+                    if(masterOrg!="")
+                    {
+
+                        List<OrganizationProfile> saDtls = organizationProfileRepository.findById(masterOrg);
+                        System.out.println("saDtls.........:"+saDtls);
+
+
+                        for(int i = 0; i < saDtls.size(); i++)
+                        {
+                            mloName = saDtls.get(i).getOrganizationName();
+
+                        }
+                        edoApplication.setMloName(mloName);
+
+                    }
+
+                    List<IgmSupDetailContainer> contDtls = igmSupDtlContRepo.findByIgmSupplimentaryDetailImportRotationNoAndIgmSupplimentaryDetailBlNo(rot, bl);
+                    for (int i = 0; i < contDtls.size(); i++) {
+                        contStatus = contDtls.get(i).getContStatus();
+                        masterBl = contDtls.get(i).getIgmSupplimentaryDetail().getMasterBLNo();
+
+                    }
+                    edoApplication.setMasterBl(masterBl);
+                    edoApplication.setBlType_BB(blType);
+
+                    edoApplication.setContStatus(contStatus);
+                    edoApplication.setMloId(mloId);
+
+                }
+
+                else{
+                    List<IgmDetails> igmDetail=igmDetailsRepo.findByImportRotationNoAndBlNo(rot, bl);
+
+
+                    String bl_type = "MB";
+                    String master_org = "";
+                    String MloName="";
+                    for (int i = 0; i < igmDetail.size(); i++) {
+                        master_org = igmDetail.get(i).getSubmiteeOrgId();
+                    }
+
+                    if(master_org!="")
+                    {
+
+                        List<OrganizationProfile> saDtls = organizationProfileRepository.findById(master_org);
+                        System.out.println("saDtls.........:"+saDtls);
+
+
+                        for(int i = 0; i < saDtls.size(); i++)
+                        {
+                            MloName = saDtls.get(i).getOrganizationName();
+
+                        }
+                        edoApplication.setMloName(MloName);
+
+                    }
+                    edoApplication.setBlType_BB(bl_type);
+
+                }
+
+
+            }
+            edoApplication.setType_of_igm(typeOfIgm);
+
+        }
+        edoApplicationOnblurLists.add(edoApplication);
+
+        return  edoApplicationOnblurLists;
+    }
+
+
+}

@@ -1,0 +1,186 @@
+/edo/application/{rot}/{bl}/{loginId}/{ipAddress}
+
+
+function getIGMInfo()
+	{
+		$rot_no = $_GET['rot_no'];
+		$bl_no = $_GET['bl_no'];
+			
+		$cnt_str="SELECT COUNT(*) as rtnValue FROM igm_details WHERE Import_Rotation_No='$rot_no' AND BL_No='$bl_no'";						
+		$cntResult = $this->bm->dataReturnDb1($cnt_str);
+		
+		$type_of_igm = "";
+		$blType_BB = "";
+		$mloName = "";
+		$mloId = "";
+		$shippingAgentName = "";
+		$ffName = "";
+		$msgFlag = 1;
+		
+		if($cntResult==0)
+		{
+			$cnt_str_sup="SELECT COUNT(*) AS rtnValue FROM igm_supplimentary_detail WHERE Import_Rotation_No='$rot_no' AND BL_No='$bl_no'";
+			$cntSupResult = $this->bm->dataReturnDb1($cnt_str_sup);
+			if($cntSupResult==0)
+			{
+				$msgFlag = 0;
+			}
+			else
+			{
+				$type_str_sup="SELECT igm_supplimentary_detail.type_of_igm AS rtnValue FROM igm_supplimentary_detail 
+						WHERE Import_Rotation_No='$rot_no' AND BL_No='$bl_no'";
+				$type_of_igm = $this->bm->dataReturnDb1($type_str_sup);
+				$blType_BB = "HB";
+			}
+		}
+		else
+		{
+			$type_str="SELECT igm_details.type_of_igm as rtnValue FROM igm_details 
+					WHERE Import_Rotation_No='$rot_no' AND BL_No='$bl_no'";						
+			$type_of_igm = $this->bm->dataReturnDb1($type_str);
+			$blType_BB = "MB";
+		}
+		
+		if($type_of_igm!="")
+		{
+			if($type_of_igm=='BB')
+			{	
+				// "BB";
+				$Submitee_Org_Id = "";
+				$str = "";
+				
+				$str="SELECT Submitee_Org_Id FROM igm_supplimentary_detail WHERE BL_No='$bl_no' AND Import_Rotation_No='$rot_no'";
+				$resltStr = $this->bm->dataSelectDb1($str);
+						
+				if(count($resltStr) == 0){
+					$str="SELECT igm_details.Submitee_Org_Id FROM igm_details  
+						WHERE igm_details.BL_No='$bl_no' AND igm_details.Import_Rotation_No='$rot_no'";									
+					$resltStr = $this->bm->dataSelectDb1($str);	
+				}
+				
+				for($i=0;$i<count($resltStr);$i++)
+				{
+					$Submitee_Org_Id=$resltStr[$i]['Submitee_Org_Id'];
+				}
+				if($Submitee_Org_Id!="")
+					{
+						$saDtls = "SELECT Organization_Name,IFNULL(AIN_No_New,AIN_No) AS ain FROM organization_profiles WHERE id='$Submitee_Org_Id'";
+						$resSHDtls = $this->bm->dataSelectDb1($saDtls);
+						for($i=0;$i<count($resSHDtls);$i++)
+						{
+							$shippingAgentName=$resSHDtls[$i]['Organization_Name']." - (".$resSHDtls[$i]['ain'].")";
+						}
+					}
+			}
+			else
+			{
+				$queryStr="SELECT igm_supplimentary_detail.Submitee_Org_Id AS sup_org,igm_details.Submitee_Org_Id AS master_org,
+				igm_supplimentary_detail.Submitee_Id
+				FROM igm_supplimentary_detail 
+				INNER JOIN igm_details ON igm_supplimentary_detail.igm_detail_id=igm_details.id
+				WHERE igm_supplimentary_detail.BL_No='$bl_no' AND igm_supplimentary_detail.Import_Rotation_No='$rot_no'";
+				$rsltStr = $this->bm->dataSelectDb1($queryStr);
+				if(count($rsltStr)>0)
+				{
+					$bl_type = "HB";
+					$sup_org = "";
+					$master_org = "";
+					
+					for($i=0;$i<count($rsltStr);$i++)
+					{
+						$sup_org=$rsltStr[$i]['sup_org'];
+						$master_org=$rsltStr[$i]['master_org'];
+						$mloId=$rsltStr[$i]['Submitee_Id'];
+					}
+					
+					
+					if($sup_org!="")
+					{
+						$ffDtls = "SELECT Organization_Name,IFNULL(AIN_No_New,AIN_No) AS ain FROM organization_profiles WHERE id='$sup_org'";
+						$rowFFDtls = $this->bm->dataSelectDb1($ffDtls);
+						for($i=0;$i<count($rowFFDtls);$i++)
+						{
+							$ffName=$rowFFDtls[$i]['Organization_Name']." - (".$rowFFDtls[$i]['ain'].")";
+						}
+						
+						
+					}
+
+					if($master_org!="")
+					{
+
+						$mloDtls = "SELECT Organization_Name,IFNULL(AIN_No_New,AIN_No) AS ain FROM organization_profiles WHERE id='$master_org'";
+						$resMloDtls = $this->bm->dataSelectDb1($mloDtls);
+						for($i=0;$i<count($resMloDtls);$i++)
+						{
+							$mloName= $resMloDtls[$i]['Organization_Name']." - (".$resMloDtls[$i]['ain'].")";
+						}
+						
+					}
+
+
+					//For finding container type & master bl when it's a house bl............Starts
+					$strQry="select igm_supplimentary_detail.master_BL_No,igm_sup_detail_container.cont_status
+					from igm_supplimentary_detail 
+					INNER JOIN igm_sup_detail_container ON igm_sup_detail_container.igm_sup_detail_id=igm_supplimentary_detail.id
+					INNER JOIN igm_details ON igm_supplimentary_detail.igm_detail_id=igm_details.id
+					where igm_supplimentary_detail.Import_Rotation_No='$rot_no' and igm_supplimentary_detail.BL_No='$bl_no'";
+					$rsltQry = $this->bm->dataSelectDb1($strQry);
+					
+					for($k=0;$k<count($rsltQry);$k++)
+					{
+						$cont_status=$rsltQry[$k]['cont_status'];
+						$master_bl=$rsltQry[$k]['master_BL_No'];
+					}
+					$data['cont_status'] = $cont_status;
+					$data['master_bl'] = $master_bl;
+					//For finding container type & master bl when it's a house bl............Ends
+					// $strInsert = "INSERT INTO edo_application_by_cf( rotation, bl, bl_type, igm_type, mlo, ff_org_id, entry_time, sumitted_by) 
+					// VALUES('$rot_no','$bl_no','$bl_type','$type_of_igm','$master_org','$sup_org', NOW(), '$login_id')";
+				}
+				else
+				{
+					$queryStr="SELECT igm_details.Submitee_Org_Id AS master_org	FROM igm_details 
+					WHERE BL_No='$bl_no' AND Import_Rotation_No='$rot_no'";
+					$rsltStr = $this->bm->dataSelectDb1($queryStr);
+					$bl_type = "MB";
+					$master_org = "";
+					
+					for($i=0;$i<count($rsltStr);$i++)
+					{
+						$master_org=$rsltStr[$i]['master_org'];
+					}
+					if($master_org!="")
+					{
+						$mloDtls = "SELECT Organization_Name,IFNULL(AIN_No_New,AIN_No) AS ain FROM organization_profiles WHERE id='$master_org'";
+						$resMloDtls = $this->bm->dataSelectDb1($mloDtls);
+						for($i=0;$i<count($resMloDtls);$i++)
+						{
+							$mloName= $resMloDtls[$i]['Organization_Name']." - (".$resMloDtls[$i]['ain'].")";
+						}
+						
+					}
+					// $strInsert = "INSERT INTO edo_application_by_cf( rotation, bl, bl_type, igm_type, mlo,  entry_time, sumitted_by) 
+					// VALUES('$rot_no','$bl_no','$bl_type','$type_of_igm','$master_org', NOW(), '$login_id')";
+				}					
+			}
+			
+			//$resInsert = $this->bm->dataInsertDB1($strInsert);
+			// if($resInsert==1)
+			// {
+				// $data['msg']='<font color="blue">Inserted Sucessfully.</font>';
+			// }
+		}
+
+		//$searchResult = $this->bm->dataSelectDB1($type_str);
+		$data['blType_BB'] = $blType_BB;		
+		$data['type_of_igm'] = $type_of_igm;		
+		$data['mloName'] = $mloName;		
+		$data['mloId'] = $mloId;
+		$data['shippingAgentName'] = $shippingAgentName;
+		$data['ffName'] = $ffName;
+		$data['msgFlag'] = $msgFlag;
+		
+		echo json_encode($data);
+	}
+	

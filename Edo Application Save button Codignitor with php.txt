@@ -1,0 +1,359 @@
+	function applicationForEDObyrotationBLentry()
+	{
+		$login_id = $this->session->userdata('login_id');
+		$session_id = $this->session->userdata('value');
+        $LoginStat = $this->session->userdata('LoginStat');
+		$org_notify_by =$this->session->userdata('login_id');
+		if($LoginStat!="yes")
+        {
+            $this->logout();
+        }
+        else
+        {
+			$data['org_id'] =$this->session->userdata('org_Type_id');
+			$data['title']="Application For EDO.";
+			$data['msg'] = "";
+			$data['flag'] = 0;
+			$rot_no = trim($this->input->post("rot_no"));
+			$bl_no = trim($this->input->post("bl_no"));
+			$beNo = trim($this->input->post("be_no"));
+			$beDate = trim($this->input->post("be_date"));
+			$ofcCode = trim($this->input->post("office_code"));
+			$sup_org = "";
+			$master_org="";
+			$applicationIdRslt="";
+			$resInsert = 0;
+			
+			$ip_address = $_SERVER['REMOTE_ADDR'];
+			
+			$cnfLoginId = "";
+			$chkIfApplicationExists="SELECT COUNT(*) AS rtnValue FROM edo_application_by_cf WHERE rotation='$rot_no' AND bl='$bl_no'";
+			$cntExisting = $this->bm->dataReturnDb1($chkIfApplicationExists);
+			if($cntExisting > 0){
+				$getCnfLoginId = "SELECT edo_applied_by AS rtnValue FROM edo_application_by_cf WHERE rotation='$rot_no' AND bl='$bl_no' ORDER BY id DESC LIMIT 1";
+				$cnfLoginId = $this->bm->dataReturnDb1($getCnfLoginId);
+			} 
+			
+			$queryCntApplication="SELECT COUNT(*) AS rtnValue FROM edo_application_by_cf 
+									WHERE rotation='$rot_no' AND bl='$bl_no' AND edo_application_by_cf.rejection_st = '0'";						
+			$cntApplication = $this->bm->dataReturnDb1($queryCntApplication);
+			if(($cntApplication==0) and ($cnfLoginId != $login_id))
+			{
+				//If there is no application for given rotation & bl no.....
+				$type_of_igm = "";
+				$blType_BB = "";
+				$cnt_str="SELECT COUNT(*) as rtnValue FROM igm_details 
+							WHERE Import_Rotation_No='$rot_no' AND BL_No='$bl_no'";						
+				$cntResult = $this->bm->dataReturnDb1($cnt_str);
+				
+				if($cntResult==0)
+				{
+					$cnt_str_sup="SELECT COUNT(*) AS rtnValue FROM igm_supplimentary_detail 
+								WHERE Import_Rotation_No='$rot_no' AND BL_No='$bl_no'";
+					$cntSupResult = $this->bm->dataReturnDb1($cnt_str_sup);
+					if($cntSupResult==0)
+					{
+						$data['msg']='<font color="red"><b>Wrong Combination of Rotation and BL</b></font>';
+					}
+					else
+					{
+						$type_str_sup="SELECT igm_supplimentary_detail.type_of_igm AS rtnValue FROM igm_supplimentary_detail 
+								WHERE Import_Rotation_No='$rot_no' AND BL_No='$bl_no'";
+						$type_of_igm = $this->bm->dataReturnDb1($type_str_sup);
+						$blType_BB = "HB";
+					}
+				}
+				else
+				{
+					$type_str="SELECT igm_details.type_of_igm as rtnValue FROM igm_details 
+							WHERE Import_Rotation_No='$rot_no' AND BL_No='$bl_no'";						
+					$type_of_igm = $this->bm->dataReturnDb1($type_str);
+					$blType_BB = "MB";
+				}	
+		
+				
+				if($type_of_igm!="")
+				{
+					$strInsert = "";
+					if($type_of_igm=='BB')
+					{	
+						// "BB";
+						$Submitee_Org_Id = "";
+						$str = "";
+						$str="SELECT Submitee_Org_Id FROM igm_supplimentary_detail  
+								WHERE BL_No='$bl_no' AND Import_Rotation_No='$rot_no'";							
+						$resltStr = $this->bm->dataSelectDB1($str);
+												
+						if(count($resltStr) == 0) {
+							$str="SELECT igm_details.Submitee_Org_Id FROM igm_details  
+								WHERE igm_details.BL_No='$bl_no' AND igm_details.Import_Rotation_No='$rot_no'";							
+							$resltStr = $this->bm->dataSelectDB1($str);	
+						}
+						
+						for($i=0;$i<count($resltStr);$i++)
+						{
+							$Submitee_Org_Id=$resltStr[$i]['Submitee_Org_Id'];
+						}					
+
+						$strInsert = "INSERT INTO edo_application_by_cf(rotation,bl,bl_type,igm_type,sh_agent_org_id,
+																		entry_time,sumitted_by,ip_address,edo_applied_by) 
+									VALUES('$rot_no','$bl_no','$blType_BB','$type_of_igm','$Submitee_Org_Id', 
+																		NOW(),'$login_id','$ip_address','$login_id')";
+					}
+					else
+					{
+						$queryStr="SELECT igm_supplimentary_detail.Submitee_Org_Id AS sup_org,
+						igm_details.Submitee_Org_Id AS master_org
+						FROM igm_supplimentary_detail 
+						INNER JOIN igm_details ON igm_supplimentary_detail.igm_detail_id=igm_details.id
+						WHERE igm_supplimentary_detail.BL_No='$bl_no' AND igm_supplimentary_detail.Import_Rotation_No='$rot_no'";
+						$rsltStr = $this->bm->dataSelectDB1($queryStr);
+						if(count($rsltStr)>0)
+						{
+							$bl_type = "HB";
+							$sup_org = "";
+							$master_org = "";
+							$master_bl = "";
+							$cont_status = "";
+							$ff_stat = 0;
+							$ff_clearance_time = "";
+							$entry_org_id = "";
+							$entered_by = "";
+							$entry_time = "";
+							$entry_ip_address = "";
+							$cleared_by = "";
+							$clearance_time = "";
+							$clearance_ip = "";
+							$cleared_by_org_id = "";
+							$clearanceSt = "";
+							$mbl_valid_upto_dt = "";
+							for($i=0;$i<count($rsltStr);$i++)
+							{
+								$sup_org=$rsltStr[$i]['sup_org'];
+								$master_org=$rsltStr[$i]['master_org'];
+							}
+							$strQry="select igm_supplimentary_detail.master_BL_No,igm_sup_detail_container.cont_status
+							from igm_supplimentary_detail 
+							INNER JOIN igm_sup_detail_container ON igm_sup_detail_container.igm_sup_detail_id=igm_supplimentary_detail.id
+							where igm_supplimentary_detail.Import_Rotation_No='$rot_no' and igm_supplimentary_detail.BL_No='$bl_no'";
+							// INNER JOIN igm_details ON igm_supplimentary_detail.igm_detail_id=igm_details.id
+							$rsltQry = $this->bm->dataSelectDB1($strQry);
+							
+							$fclStatus = 0;
+							for($k=0;$k<count($rsltQry);$k++)
+							{
+								$cont_status=$rsltQry[$k]['cont_status'];
+								$master_bl=$rsltQry[$k]['master_BL_No'];
+								
+								if($cont_status=="FCL" or $cont_status=="FCL/PART" or $cont_status=="ETY"){
+									$fclStatus = $fclStatus+1;
+								}
+							}
+							if($fclStatus > 0){ 
+								$cont_status = "FCL";
+							} else {
+								$cont_status = $cont_status;
+							}
+							
+							$provided_org_type_id = "";
+							$getOrgType = "SELECT org_Type_id FROM users WHERE login_id='$login_id'";
+							$rsltOrgType = $this->bm->dataSelectDB1($getOrgType);
+							for($orgType=0;$orgType<count($rsltOrgType);$orgType++){
+								$provided_org_type_id=$rsltOrgType[$orgType]['org_Type_id'];
+							}
+							
+							if($cont_status=="" or $cont_status==null or $master_bl=="" or $master_bl==null){
+								$data['msg']='<font color="red"><b>Sorry! Could not apply EDO.</b></font>';
+							} else if($provided_org_type_id !="2") {
+								$data['msg']='<font color="red"><b>Sorry! Invalid C&F.</b></font>';
+							} else {
+								if($cont_status=="LCL")
+								{
+									//LCL				
+									$strChkMBLClearance="select * from cleared_mbl_by_mlo where master_bl='$master_bl'";
+									$mblClearance = $this->bm->dataSelectDB1($strChkMBLClearance);
+									
+									$mblClearanceStatus = count($mblClearance);
+									
+									if($mblClearanceStatus==0)
+									{
+										$ff_stat = 0;
+										
+										$strInsert = "INSERT INTO edo_application_by_cf(rotation,bl,bl_type,igm_type,mlo,ff_org_id,ff_stat,ff_clearance_time,
+																						cont_status,mbl_of_hbl, entry_time, sumitted_by,ip_address,edo_applied_by) 
+													VALUES('$rot_no','$bl_no','$bl_type','$type_of_igm','$master_org','$sup_org','$ff_stat',
+															'$ff_clearance_time','$cont_status','$master_bl' ,NOW(), '$login_id','$ip_address','$login_id')";
+										
+									}
+									
+									else
+									{
+										
+										for($l=0;$l<$mblClearanceStatus;$l++)
+										{
+											$ff_clearance_time=$mblClearance[$l]['entry_time'];
+											$clearanceSt=$mblClearance[$l]['clearance_st'];
+											$entry_org_id=$mblClearance[$l]['entry_org_id'];
+											$entered_by=$mblClearance[$l]['entered_by'];
+											$entry_time=$mblClearance[$l]['entry_time'];
+											$entry_ip_address=$mblClearance[$l]['entry_ip_address'];
+											$cleared_by=$mblClearance[$l]['cleared_by'];
+											$clearance_time=$mblClearance[$l]['clearance_time'];
+											$clearance_ip=$mblClearance[$l]['clearance_ip'];
+											$cleared_by_org_id=$mblClearance[$l]['cleared_by_org_id'];
+											$mbl_valid_upto_dt=$mblClearance[$l]['valid_upto_dt'];
+										}
+										
+										$ff_stat = 1;
+										$strInsert = "INSERT INTO edo_application_by_cf(rotation,bl,bl_type,igm_type,mlo,ff_org_id,ff_stat,ff_clearance_time,
+										forwarded_by,forwarded_org_id,cont_status,mbl_of_hbl,entry_time,sumitted_by,ip_address,edo_applied_by) 
+										VALUES('$rot_no','$bl_no','$bl_type','$type_of_igm','$master_org','$sup_org','$ff_stat','$ff_clearance_time','$cleared_by','$cleared_by_org_id','$cont_status','$master_bl' ,NOW(), '$login_id','$ip_address','$login_id')";
+										
+										
+									}
+									
+								}
+								else if($cont_status=="FCL" or $cont_status=="FCL/PART" or $cont_status=="ETY")
+								{
+									//FCL or FCL/PART or ETY
+									$strChkMBLClearance="select * from cleared_mbl_by_mlo where master_bl='$master_bl'";
+									$mblClearance = $this->bm->dataSelectDB1($strChkMBLClearance);
+									if(count($mblClearance)==0)
+									{
+										$ff_stat = 0;									
+										
+										$strInsert = "INSERT INTO edo_application_by_cf(rotation,bl,bl_type,igm_type,mlo,ff_org_id,ff_stat,ff_clearance_time,
+																						cont_status,mbl_of_hbl, entry_time, sumitted_by,ip_address,edo_applied_by) 
+													VALUES('$rot_no','$bl_no','$bl_type','$type_of_igm','$master_org','$sup_org','$ff_stat',
+															'$ff_clearance_time','$cont_status','$master_bl' ,NOW(), '$login_id','$ip_address','$login_id')";
+									}
+									else
+									{
+										
+										for($l=0;$l<count($mblClearance);$l++)
+										{
+											$ff_clearance_time=$mblClearance[$l]['entry_time'];
+											$clearanceSt=$mblClearance[$l]['clearance_st'];
+											$entry_org_id=$mblClearance[$l]['entry_org_id'];
+											$entered_by=$mblClearance[$l]['entered_by'];
+											$entry_time=$mblClearance[$l]['entry_time'];
+											$entry_ip_address=$mblClearance[$l]['entry_ip_address'];
+											$cleared_by=$mblClearance[$l]['cleared_by'];
+											$clearance_time=$mblClearance[$l]['clearance_time'];
+											$clearance_ip=$mblClearance[$l]['clearance_ip'];
+											$cleared_by_org_id=$mblClearance[$l]['cleared_by_org_id'];
+											$mbl_valid_upto_dt=$mblClearance[$l]['valid_upto_dt'];
+										}
+										
+										$ff_stat = 1;
+										$strInsert = "INSERT INTO edo_application_by_cf(rotation,bl,bl_type,igm_type,mlo,ff_org_id,ff_stat,ff_clearance_time,
+										forwarded_by,forwarded_org_id,valid_upto_dt_by_mlo,cont_status,mbl_of_hbl,entry_time,sumitted_by,ip_address,edo_applied_by) 
+										VALUES('$rot_no','$bl_no','$bl_type','$type_of_igm','$master_org','$sup_org','$ff_stat',
+										'$ff_clearance_time','$cleared_by','$cleared_by_org_id','$mbl_valid_upto_dt','$cont_status','$master_bl',NOW(),
+										'$login_id','$ip_address','$login_id')";
+										
+										
+									}
+									
+								
+								}
+								else {
+									$data['msg']='<font color="red"><b>Sorry! Could not apply EDO...</b></font>';
+								}
+							}						
+						}
+						else
+						{
+							$container_status = "";
+							$queryContStatus = "SELECT igm_detail_container.cont_status
+												FROM igm_detail_container
+												INNER JOIN igm_details ON igm_detail_container.igm_detail_id=igm_details.id
+												WHERE igm_details.Import_Rotation_No='$rot_no' AND igm_details.BL_No='$bl_no'";
+							$resContStatus = $this->bm->dataSelectDB1($queryContStatus);
+							
+							$container_status = "";
+							$fclStatus = 0 ;
+							for($f=0;$f<count($resContStatus);$f++)
+							{								
+								$container_status=$resContStatus[$f]['cont_status'];
+								
+								if($container_status=="FCL" or $container_status=="FCL/PART" or $container_status=="ETY"){
+									$fclStatus = $fclStatus+1;
+								}
+							}
+							if($fclStatus > 0){
+								$container_status = "FCL";
+							} else {
+								$container_status = $container_status;
+							}
+							
+							//$container_status=$resContStatus[0]['cont_status'];
+							
+							
+							$queryStr="SELECT igm_details.Submitee_Org_Id AS master_org	
+							FROM igm_details 
+							WHERE BL_No='$bl_no' AND Import_Rotation_No='$rot_no'";
+							$rsltStr = $this->bm->dataSelectDB1($queryStr);
+							$bl_type = "MB";
+							$master_org = "";
+							for($i=0;$i<count($rsltStr);$i++)
+							{
+								$master_org=$rsltStr[$i]['master_org'];
+							}
+							if($master_org=="" or $master_org==null){
+								$data['msg']='<font color="red"><b>Sorry! Could not apply EDO.</b></font>';
+							} else {
+								$strInsert = "INSERT INTO edo_application_by_cf(rotation,bl,bl_type,igm_type,mlo,cont_status,
+										entry_time,sumitted_by,ip_address,edo_applied_by) 
+								VALUES('$rot_no','$bl_no','$bl_type','$type_of_igm','$master_org','$container_status',
+										NOW(),'$login_id','$ip_address','$login_id')";
+							}
+							
+						}					
+					}
+					
+					$resInsert = $this->bm->dataInsertDB1($strInsert);
+					if($resInsert==1)
+					{
+						$data['msg']='<font color="blue"><b>Inserted Sucessfully.</b></font>';
+						if($type_of_igm != 'BB')
+						{
+							// Application ID
+							$applicationIdQuery = "SELECT id FROM edo_application_by_cf WHERE rotation = '$rot_no' AND bl = '$bl_no' AND rejection_st = 0";
+							$applicationIdRslt = $this->bm->dataSelectDB1($applicationIdQuery);
+							$applicationId = "";
+							if(count($applicationIdRslt)>0)
+							{
+								$applicationId = $applicationIdRslt[0]['id'];
+							}
+
+							if($bl_type == "HB"){
+
+								$edoNotifyFFQuery = "INSERT INTO edo_notification(application_id,org_notified,notification_st,seen_st,org_notify_by,generate_time)
+								VALUES('$applicationId','$sup_org',1,0,'$org_notify_by',NOW())";
+								//$this->bm->dataInsertDB1($edoNotifyFFQuery);
+							}
+							
+							$edoNotifyMLOQuery = "INSERT INTO edo_notification(application_id,org_notified,notification_st,seen_st,life_st,org_notify_by,generate_time) 
+							VALUES('$applicationId','$master_org',1,0,0,'$org_notify_by',NOW())";
+							//$this->bm->dataInsertDB1($edoNotifyMLOQuery);
+						}
+						
+					}
+				}
+			}
+			else
+			{
+				//If there is already any application for given rotation & bl no...
+				$data['msg']='<font color="red">Sorry! Already applied for Rotation- '.'<b>'.$rot_no.'</b>'.' and BL- '.'<b>'.$bl_no.'</b>'.'</font>';
+			}
+			
+			$data['flag'] = "all"; //To show all do list
+			
+            $this->load->view('cssAssetsList');
+            $this->load->view('headerTop');
+            $this->load->view('sidebar');
+            $this->load->view('applicationForEDObyrotationBL',$data);
+			$this->load->view('jsAssetsList');
+		}
+	}
